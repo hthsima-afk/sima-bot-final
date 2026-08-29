@@ -12,7 +12,6 @@ const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN || '');
 
 const allowedUsers = (process.env.ALLOWED_USER_IDS || '').split(',').map(id => id.trim());
 
-// ذاكرة دائمة
 const MEMORY_FILE = 'memory.json';
 let memoryData = {};
 try { if (fs.existsSync(MEMORY_FILE)) memoryData = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf-8')); } catch(e) {}
@@ -27,14 +26,13 @@ async function callLLM(messages) {
     if (response) return response;
     throw new Error('Empty');
   } catch (error) {
-    console.error('Groq error:', error.message);
     if (genAI) {
       try {
         const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
         const prompt = messages.map(m => `${m.role}: ${m.content}`).join('\n');
         const result = await model.generateContent(prompt);
         return result.response.text();
-      } catch(e) { console.error('Gemini error:', e.message); }
+      } catch(e) {}
     }
     throw error;
   }
@@ -42,156 +40,113 @@ async function callLLM(messages) {
 
 // 🎨 صنع الصور
 async function generateImage(prompt) {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
-  return url;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true`;
 }
 
 // 🎥 صنع الفيديو
 async function generateVideo(prompt) {
-  const url = `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?duration=5&nologo=true`;
-  return url;
+  return `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?duration=3&nologo=true`;
 }
 
-// 🎵 فهم الصوت
-async function transcribeAudio(fileUrl) {
-  try {
-    const response = await fetch(fileUrl);
-    const buffer = await response.arrayBuffer();
-    
-    const transcription = await groq.audio.transcriptions.create({
-      file: new File([buffer], 'audio.ogg', { type: 'audio/ogg' }),
-      model: 'whisper-large-v3-turbo',
-      language: 'ar',
-    });
-    
-    return transcription.text;
-  } catch (error) {
-    console.error('Transcription error:', error);
-    throw error;
-  }
-}
-
-// الأوامر الأساسية
 bot.command('start', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return ctx.reply('⛔');
   await ctx.reply(
     '👋 Welcome to Sima!\n\n' +
-    '🎨 /img وصف الصورة - صنع صورة\n' +
-    '🎥 /vid وصف الفيديو - صنع فيديو\n' +
-    '💾 /remember مفتاح قيمة - حفظ\n' +
-    '🔍 /recall مفتاح - استرجاع\n' +
-    '📚 /listmem - عرض الذكريات\n\n' +
-    '🎵 أرسل مقطع صوتي لفهمه!\n\n' +
+    '🎨 /img وصف - صنع صورة\n' +
+    '🎥 /vid وصف - صنع فيديو\n' +
+    '💾 /remember مفتاح قيمة\n' +
+    '🔍 /recall مفتاح\n' +
+    '📚 /listmem\n\n' +
     'Just chat!'
   );
 });
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    '🤖 أوامر Sima:\n\n' +
-    '🎨 /img وصف - صنع صورة\n' +
-    '🎥 /vid وصف - صنع فيديو\n' +
+    '🎨 /img وصف\n' +
+    '🎥 /vid وصف\n' +
     '💾 /remember مفتاح قيمة\n' +
     '🔍 /recall مفتاح\n' +
-    '📚 /listmem\n\n' +
-    '🎵 أرسل صوت للنسخ!\n' +
-    '💬 أرسل رسالة للدردشة!'
+    '📚 /listmem'
   );
 });
 
-// 🎨 صنع الصور
+// 🎨 صنع صورة
 bot.command('img', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
   
   const prompt = (ctx.message?.text || '').replace('/img', '').trim();
-  if (!prompt) return ctx.reply('Usage: /img وصف الصورة');
+  if (!prompt) return ctx.reply('الاستخدام: /img وصف الصورة');
   
   await ctx.reply('🎨 جاري صنع الصورة...');
   
   try {
     const imageUrl = await generateImage(prompt);
+    console.log('Image URL:', imageUrl);
+    
+    // إرسال مباشر من الرابط
     await ctx.replyWithPhoto(imageUrl, { caption: `🎨 ${prompt}` });
   } catch(e) {
-    await ctx.reply('❌ خطأ في صنع الصورة');
+    console.error('Image error:', e.message);
+    const url = await generateImage(prompt);
+    await ctx.reply(`🎨 الصورة جاهزة:\n${url}`);
   }
 });
 
-// 🎥 صنع الفيديو
+// 🎥 صنع فيديو
 bot.command('vid', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
   
   const prompt = (ctx.message?.text || '').replace('/vid', '').trim();
-  if (!prompt) return ctx.reply('Usage: /vid وصف الفيديو');
+  if (!prompt) return ctx.reply('الاستخدام: /vid وصف الفيديو');
   
-  await ctx.reply('🎥 جاري صنع الفيديو (قد يستغرق دقيقة)...');
+  await ctx.reply('🎥 جاري صنع الفيديو...');
   
   try {
     const videoUrl = await generateVideo(prompt);
-    await ctx.replyWithVideo(videoUrl, { caption: `🎥 ${prompt}` });
+    await ctx.reply(`🎥 الفيديو جاهز:\n${videoUrl}`);
   } catch(e) {
     await ctx.reply('❌ خطأ في صنع الفيديو');
   }
 });
 
-// 💾 الذاكرة
 bot.command('remember', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
   const parts = (ctx.message?.text || '').split(' ');
-  if (parts.length < 3) return ctx.reply('Usage: /remember key value');
+  if (parts.length < 3) return ctx.reply('الاستخدام: /remember مفتاح قيمة');
   const key = parts[1], value = parts.slice(2).join(' ');
   if (!memoryData[uid]) memoryData[uid] = {};
   memoryData[uid][key] = value;
   saveMemory();
-  await ctx.reply(`✅ Remembered: ${key}`);
+  await ctx.reply(`✅ تم الحفظ: ${key}`);
 });
 
 bot.command('recall', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
   const key = (ctx.message?.text || '').split(' ')[1];
-  if (!key) return ctx.reply('Usage: /recall key');
+  if (!key) return ctx.reply('الاستخدام: /recall مفتاح');
   const value = memoryData[uid]?.[key];
-  await ctx.reply(value ? `🔍 ${key}: ${value}` : `❌ Not found`);
+  await ctx.reply(value ? `🔍 ${key}: ${value}` : '❌ غير موجود');
 });
 
 bot.command('listmem', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   const mem = memoryData[uid] || {};
   const keys = Object.keys(mem);
-  if (keys.length === 0) return ctx.reply('📭 No memories');
-  let resp = '📚 Memories:\n\n';
+  if (keys.length === 0) return ctx.reply('📭 لا توجد ذكريات');
+  let resp = '📚 الذكريات:\n\n';
   for (const k of keys) resp += `• ${k}: ${mem[k]}\n`;
   await ctx.reply(resp);
 });
 
-// 🎵 فهم الصوت
-bot.on('message:voice', async (ctx) => {
-  const uid = ctx.from?.id.toString() || '';
-  if (!allowedUsers.includes(uid)) return;
-  
-  try {
-    await ctx.reply('🎵 جاري فهم الصوت...');
-    
-    const file = await ctx.getFile();
-    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
-    
-    const text = await transcribeAudio(fileUrl);
-    await ctx.reply(`🎵 النص:\n\n${text}`);
-    
-  } catch(e) {
-    console.error('Voice error:', e);
-    await ctx.reply('❌ خطأ في فهم الصوت');
-  }
-});
-
-// 💬 الدردشة
 bot.on('message:text', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
-  if (!allowedUsers.includes(uid)) return ctx.reply('⛔ Unauthorized');
+  if (!allowedUsers.includes(uid)) return ctx.reply('⛔ غير مصرح');
   try {
     await ctx.replyWithChatAction('typing');
     const messages = [
@@ -201,7 +156,7 @@ bot.on('message:text', async (ctx) => {
     const response = await callLLM(messages);
     await ctx.reply(response);
   } catch(e) {
-    await ctx.reply('❌ Error');
+    await ctx.reply('❌ خطأ');
   }
 });
 
