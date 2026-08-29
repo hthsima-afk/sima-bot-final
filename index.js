@@ -40,16 +40,103 @@ async function callLLM(messages) {
   }
 }
 
+// 🎨 صنع الصور
+async function generateImage(prompt) {
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
+  return url;
+}
+
+// 🎥 صنع الفيديو
+async function generateVideo(prompt) {
+  const url = `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?duration=5&nologo=true`;
+  return url;
+}
+
+// 🎵 فهم الصوت
+async function transcribeAudio(fileUrl) {
+  try {
+    const response = await fetch(fileUrl);
+    const buffer = await response.arrayBuffer();
+    
+    const transcription = await groq.audio.transcriptions.create({
+      file: new File([buffer], 'audio.ogg', { type: 'audio/ogg' }),
+      model: 'whisper-large-v3-turbo',
+      language: 'ar',
+    });
+    
+    return transcription.text;
+  } catch (error) {
+    console.error('Transcription error:', error);
+    throw error;
+  }
+}
+
+// الأوامر الأساسية
 bot.command('start', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return ctx.reply('⛔');
-  await ctx.reply('👋 Welcome to Sima!\n\n/help - Help\n/remember key value - Save\n/recall key - Get\n/listmem - List all\n\nJust chat!');
+  await ctx.reply(
+    '👋 Welcome to Sima!\n\n' +
+    '🎨 /img وصف الصورة - صنع صورة\n' +
+    '🎥 /vid وصف الفيديو - صنع فيديو\n' +
+    '💾 /remember مفتاح قيمة - حفظ\n' +
+    '🔍 /recall مفتاح - استرجاع\n' +
+    '📚 /listmem - عرض الذكريات\n\n' +
+    '🎵 أرسل مقطع صوتي لفهمه!\n\n' +
+    'Just chat!'
+  );
 });
 
 bot.command('help', async (ctx) => {
-  await ctx.reply('🤖 Commands:\n/start - Welcome\n/help - Help\n/remember key value\n/recall key\n/listmem');
+  await ctx.reply(
+    '🤖 أوامر Sima:\n\n' +
+    '🎨 /img وصف - صنع صورة\n' +
+    '🎥 /vid وصف - صنع فيديو\n' +
+    '💾 /remember مفتاح قيمة\n' +
+    '🔍 /recall مفتاح\n' +
+    '📚 /listmem\n\n' +
+    '🎵 أرسل صوت للنسخ!\n' +
+    '💬 أرسل رسالة للدردشة!'
+  );
 });
 
+// 🎨 صنع الصور
+bot.command('img', async (ctx) => {
+  const uid = ctx.from?.id.toString() || '';
+  if (!allowedUsers.includes(uid)) return;
+  
+  const prompt = (ctx.message?.text || '').replace('/img', '').trim();
+  if (!prompt) return ctx.reply('Usage: /img وصف الصورة');
+  
+  await ctx.reply('🎨 جاري صنع الصورة...');
+  
+  try {
+    const imageUrl = await generateImage(prompt);
+    await ctx.replyWithPhoto(imageUrl, { caption: `🎨 ${prompt}` });
+  } catch(e) {
+    await ctx.reply('❌ خطأ في صنع الصورة');
+  }
+});
+
+// 🎥 صنع الفيديو
+bot.command('vid', async (ctx) => {
+  const uid = ctx.from?.id.toString() || '';
+  if (!allowedUsers.includes(uid)) return;
+  
+  const prompt = (ctx.message?.text || '').replace('/vid', '').trim();
+  if (!prompt) return ctx.reply('Usage: /vid وصف الفيديو');
+  
+  await ctx.reply('🎥 جاري صنع الفيديو (قد يستغرق دقيقة)...');
+  
+  try {
+    const videoUrl = await generateVideo(prompt);
+    await ctx.replyWithVideo(videoUrl, { caption: `🎥 ${prompt}` });
+  } catch(e) {
+    await ctx.reply('❌ خطأ في صنع الفيديو');
+  }
+});
+
+// 💾 الذاكرة
 bot.command('remember', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
@@ -68,7 +155,7 @@ bot.command('recall', async (ctx) => {
   const key = (ctx.message?.text || '').split(' ')[1];
   if (!key) return ctx.reply('Usage: /recall key');
   const value = memoryData[uid]?.[key];
-  await ctx.reply(value ? `🔍 ${key}: ${value}` : `❌ Not found: ${key}`);
+  await ctx.reply(value ? `🔍 ${key}: ${value}` : `❌ Not found`);
 });
 
 bot.command('listmem', async (ctx) => {
@@ -81,6 +168,27 @@ bot.command('listmem', async (ctx) => {
   await ctx.reply(resp);
 });
 
+// 🎵 فهم الصوت
+bot.on('message:voice', async (ctx) => {
+  const uid = ctx.from?.id.toString() || '';
+  if (!allowedUsers.includes(uid)) return;
+  
+  try {
+    await ctx.reply('🎵 جاري فهم الصوت...');
+    
+    const file = await ctx.getFile();
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+    
+    const text = await transcribeAudio(fileUrl);
+    await ctx.reply(`🎵 النص:\n\n${text}`);
+    
+  } catch(e) {
+    console.error('Voice error:', e);
+    await ctx.reply('❌ خطأ في فهم الصوت');
+  }
+});
+
+// 💬 الدردشة
 bot.on('message:text', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return ctx.reply('⛔ Unauthorized');
