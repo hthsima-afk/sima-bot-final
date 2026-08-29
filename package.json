@@ -1,0 +1,14 @@
+{
+  "name": "sima",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "grammy": "^1.30.0",
+    "groq-sdk": "^0.8.0",
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.7"
+  }
+}
