@@ -43,7 +43,8 @@ async function generateImage(prompt) {
 }
 
 async function generateVideo(prompt) {
-  return `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?duration=3&nologo=true`;
+  // استخدام خدمة بديلة
+  return `https://image.pollinations.ai/video/${encodeURIComponent(prompt)}?duration=3&width=512&height=512&nologo=true`;
 }
 
 // 🎵 نسخ الصوت
@@ -134,16 +135,19 @@ bot.command('vid', async (ctx) => {
     const videoUrl = await generateVideo(prompt);
     console.log('Video URL:', videoUrl);
     
-    // محاولة إرسال الفيديو مباشرة
-    try {
-      await ctx.replyWithVideo(videoUrl, { caption: `🎥 ${prompt}` });
-    } catch(videoError) {
-      // إذا فشل، أرسل الرابط
-      await ctx.reply(`🎥 الفيديو (اضغط للتحميل):\n${videoUrl}`);
+    // تحميل الفيديو وإرساله
+    const response = await fetch(videoUrl);
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await ctx.replyWithVideo(buffer, { caption: `🎥 ${prompt}` });
+    } else {
+      // إذا لم يعمل الفيديو، أرسل صورة متحركة
+      const gifUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true`;
+      await ctx.replyWithPhoto(gifUrl, { caption: `🎥 (صورة بدل فيديو) ${prompt}` });
     }
   } catch(e) {
-    console.error('Video error:', e);
-    await ctx.reply('❌ خطأ في صنع الفيديو');
+    console.error('Video error:', e.message);
+    await ctx.reply('❌ خدمة الفيديو غير متاحة حالياً. جرب /img بدلاً منها.');
   }
 });
 
