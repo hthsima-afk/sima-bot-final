@@ -39,62 +39,8 @@ async function callLLM(messages) {
 
 // 🎨 توليد صورة باستخدام Nano Banana
 async function generateImageNanoBanana(prompt) {
-  if (!genAI) throw new Error('No Gemini API');
-  
-  try {
-    // استخدام Nano Banana (Gemini 2.5 Flash Image)
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-3.6-flash-image' // أو gemini-2.5-flash-image
-    });
-    
-    const result = await model.generateContent({
-      contents: [{ 
-        role: 'user', 
-        parts: [{ text: `Generate an image: ${prompt}` }] 
-      }],
-    });
-    
-    // استخراج الصورة من الاستجابة
-    const response = result.response;
-    
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          const base64 = part.inlineData.data;
-          return Buffer.from(base64, 'base64');
-        }
-      }
-    }
-    
-    throw new Error('No image in response');
-  } catch(e) {
-    console.error('Nano Banana error:', e.message);
-    
-    // جرب موديلات أخرى
-    const models = ['gemini-2.5-flash-image', 'gemini-2.0-flash-image', 'gemini-2.0-flash-exp-image'];
-    
-    for (const modelName of models) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        });
-        
-        const response = result.response;
-        if (response.candidates && response.candidates[0]?.content?.parts) {
-          for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-              return Buffer.from(part.inlineData.data, 'base64');
-            }
-          }
-        }
-      } catch(e2) {
-        console.log(`${modelName} failed:`, e2.message);
-      }
-    }
-    
-    throw e;
-  }
+  // استخدام Pollinations مباشرة - يعمل بدون حصة
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${Date.now()}`;
 }
 
 // 🎵 نسخ الصوت
