@@ -12,16 +12,13 @@ const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN || '');
 
 const allowedUsers = (process.env.ALLOWED_USER_IDS || '').split(',').map(id => id.trim());
 
-// ============ الذاكرة ============
 const MEMORY_FILE = 'memory.json';
 let memoryData = {};
 try { if (fs.existsSync(MEMORY_FILE)) memoryData = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf-8')); } catch(e) {}
 function saveMemory() { fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryData, null, 2)); }
 
-// محادثة لكل مستخدم
 const conversations = new Map();
 
-// ============ LLM ============
 async function callLLM(messages) {
   try {
     const completion = await groq.chat.completions.create({
@@ -43,42 +40,46 @@ async function callLLM(messages) {
   }
 }
 
-// ============ الصور عالية الجودة ============
+// 🎨 صورة - باستخدام Pollinations مع تحسين البرومبت
 function generateImage(prompt) {
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random()*1000)}`;
+  const enhancedPrompt = `${prompt}, highly detailed, professional photography, 4k, sharp focus, beautiful lighting`;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true`;
 }
 
-// ============ الفيديو (GIF متحرك) ============
-function generateVideo(prompt) {
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ', animated, motion, cinematic')}?width=768&height=768&nologo=true&gif=true&seed=${Math.floor(Math.random()*1000)}`;
+// 🎨 بديل: استخدام Hugging Face API مجاني
+async function generateImageHF(prompt) {
+  try {
+    const response = await fetch('https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: prompt }),
+    });
+    
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return buffer;
+    }
+    throw new Error('HF failed');
+  } catch(e) {
+    return null;
+  }
 }
 
-// ============ الأوامر ============
 bot.command('start', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return ctx.reply('⛔');
   await ctx.reply(
     '👋 مرحباً! أنا سيما\n\n' +
-    '🎨 /img وصف - صورة عالية الجودة\n' +
-    '🎥 /vid وصف - فيديو متحرك\n' +
+    '🎨 /img وصف - صورة\n' +
     '💾 /remember مفتاح قيمة - حفظ\n' +
     '🔍 /recall مفتاح - استرجاع\n' +
     '📚 /listmem - الذكريات\n\n' +
-    '💬 أنا أتذكر محادثاتنا!'
+    '💬 أتذكر محادثاتنا!'
   );
 });
 
-bot.command('help', async (ctx) => {
-  await ctx.reply(
-    '🎨 /img وصف\n' +
-    '🎥 /vid وصف\n' +
-    '💾 /remember مفتاح قيمة\n' +
-    '🔍 /recall مفتاح\n' +
-    '📚 /listmem'
-  );
-});
-
-// 🎨 صورة عالية الجودة
 bot.command('img', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return ctx.reply('⛔');
@@ -86,48 +87,33 @@ bot.command('img', async (ctx) => {
   const prompt = (ctx.message?.text || '').replace('/img', '').trim();
   if (!prompt) return ctx.reply('الاستخدام: /img وصف الصورة');
   
-  await ctx.reply('🎨 جاري صنع صورة عالية الجودة...');
+  await ctx.reply('🎨 جاري صنع الصورة...');
   
   try {
+    // جرب Pollinations أولاً
     const imageUrl = generateImage(prompt);
-    console.log('Image URL:', imageUrl);
-    
-    // تحميل الصورة وإرسالها مباشرة
     const response = await fetch(imageUrl);
-    const buffer = Buffer.from(await response.arrayBuffer());
-    await ctx.replyWithPhoto(buffer, { caption: `🎨 ${prompt}` });
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await ctx.replyWithPhoto(buffer, { caption: `🎨 ${prompt}` });
+      return;
+    }
+    
+    // جرب Hugging Face
+    const hfBuffer = await generateImageHF(prompt);
+    if (hfBuffer) {
+      await ctx.replyWithPhoto(hfBuffer, { caption: `🎨 ${prompt}` });
+      return;
+    }
+    
+    // إذا فشل كل شيء
+    await ctx.replyWithPhoto(imageUrl, { caption: `🎨 ${prompt}` });
   } catch(e) {
     console.error('Image error:', e.message);
-    // محاولة الإرسال بالرابط
-    await ctx.replyWithPhoto(generateImage(prompt), { caption: `🎨 ${prompt}` });
+    await ctx.replyWithPhoto(generateImage(prompt));
   }
 });
 
-// 🎥 فيديو متحرك
-bot.command('vid', async (ctx) => {
-  const uid = ctx.from?.id.toString() || '';
-  if (!allowedUsers.includes(uid)) return ctx.reply('⛔');
-  
-  const prompt = (ctx.message?.text || '').replace('/vid', '').trim();
-  if (!prompt) return ctx.reply('الاستخدام: /vid وصف المشهد');
-  
-  await ctx.reply('🎥 جاري صنع الفيديو...');
-  
-  try {
-    const gifUrl = generateVideo(prompt);
-    console.log('GIF URL:', gifUrl);
-    
-    // تحميل وإرسال مباشرة
-    const response = await fetch(gifUrl);
-    const buffer = Buffer.from(await response.arrayBuffer());
-    await ctx.replyWithAnimation(buffer, { caption: `🎥 ${prompt}` });
-  } catch(e) {
-    console.error('Video error:', e.message);
-    await ctx.replyWithAnimation(generateVideo(prompt), { caption: `🎥 ${prompt}` });
-  }
-});
-
-// 💾 حفظ
 bot.command('remember', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
@@ -140,7 +126,6 @@ bot.command('remember', async (ctx) => {
   await ctx.reply(`✅ تم الحفظ: ${key} = ${value}`);
 });
 
-// 🔍 استرجاع
 bot.command('recall', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
@@ -150,7 +135,6 @@ bot.command('recall', async (ctx) => {
   await ctx.reply(value ? `🔍 ${key}: ${value}` : '❌ غير موجود');
 });
 
-// 📚 عرض الذكريات
 bot.command('listmem', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   const mem = memoryData[uid] || {};
@@ -161,39 +145,21 @@ bot.command('listmem', async (ctx) => {
   await ctx.reply(resp);
 });
 
-// 💬 الدردشة مع ذاكرة المحادثة
 bot.on('message:text', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
-  if (!allowedUsers.includes(uid)) return ctx.reply('⛔ غير مصرح');
+  if (!allowedUsers.includes(uid)) return ctx.reply('⛔');
   
   const text = ctx.message.text;
   
   // إذا طلب صورة
   if (text.includes('ارسم') || text.includes('صورة') || text.includes('صور')) {
-    const prompt = text.replace(/ارسم|صورة|صور/g, '').trim();
+    const prompt = text.replace(/ارسم|صورة|صور/g, '').trim() || 'cute cat';
     await ctx.reply('🎨 جاري الصنع...');
     try {
-      const imageUrl = generateImage(prompt || 'cute cat');
-      const response = await fetch(imageUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      await ctx.replyWithPhoto(buffer, { caption: `🎨 ${prompt}` });
+      const imageUrl = generateImage(prompt);
+      await ctx.replyWithPhoto(imageUrl, { caption: `🎨 ${prompt}` });
     } catch(e) {
-      await ctx.replyWithPhoto(generateImage(prompt), { caption: `🎨 ${prompt}` });
-    }
-    return;
-  }
-  
-  // إذا طلب فيديو
-  if (text.includes('فيديو') || text.includes('مقطع')) {
-    const prompt = text.replace(/فيديو|مقطع/g, '').trim();
-    await ctx.reply('🎥 جاري الصنع...');
-    try {
-      const gifUrl = generateVideo(prompt || 'nature');
-      const response = await fetch(gifUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      await ctx.replyWithAnimation(buffer, { caption: `🎥 ${prompt}` });
-    } catch(e) {
-      await ctx.replyWithAnimation(generateVideo(prompt), { caption: `🎥 ${prompt}` });
+      await ctx.reply('❌ خطأ في الصورة');
     }
     return;
   }
@@ -201,29 +167,24 @@ bot.on('message:text', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
     
-    // استرجاع محادثات سابقة
     const history = conversations.get(uid) || [];
-    
-    // استرجاع ذكريات محفوظة
     const savedMemories = memoryData[uid] || {};
     const memText = Object.entries(savedMemories).map(([k,v]) => `${k}: ${v}`).join('\n');
     
     const messages = [
-      { role: 'system', content: `You are Sima, a helpful AI assistant. User memories:\n${memText || 'None'}` },
+      { role: 'system', content: `You are Sima. User memories:\n${memText || 'None'}` },
       ...history.slice(-6),
       { role: 'user', content: text },
     ];
     
     const response = await callLLM(messages);
     
-    // حفظ في ذاكرة المحادثة
     history.push({ role: 'user', content: text });
     history.push({ role: 'assistant', content: response });
     conversations.set(uid, history.slice(-10));
     
     await ctx.reply(response);
   } catch(e) {
-    console.error('Chat error:', e);
     await ctx.reply('❌ خطأ');
   }
 });
