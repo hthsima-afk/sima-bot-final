@@ -132,8 +132,17 @@ bot.command('vid', async (ctx) => {
   
   try {
     const videoUrl = await generateVideo(prompt);
-    await ctx.reply(`🎥 الفيديو:\n${videoUrl}`);
+    console.log('Video URL:', videoUrl);
+    
+    // محاولة إرسال الفيديو مباشرة
+    try {
+      await ctx.replyWithVideo(videoUrl, { caption: `🎥 ${prompt}` });
+    } catch(videoError) {
+      // إذا فشل، أرسل الرابط
+      await ctx.reply(`🎥 الفيديو (اضغط للتحميل):\n${videoUrl}`);
+    }
   } catch(e) {
+    console.error('Video error:', e);
     await ctx.reply('❌ خطأ في صنع الفيديو');
   }
 });
@@ -199,7 +208,11 @@ bot.on('message:voice', async (ctx) => {
     if (trimmed.includes('فيديو') || trimmed.includes('مقطع')) {
       const prompt = trimmed.replace(/فيديو|مقطع/g, '').trim();
       const videoUrl = await generateVideo(prompt || 'nature');
-      await ctx.reply(`🎥 الفيديو:\n${videoUrl}`);
+      try {
+        await ctx.replyWithVideo(videoUrl, { caption: `🎥 ${prompt}` });
+      } catch(e) {
+        await ctx.reply(`🎥 الفيديو:\n${videoUrl}`);
+      }
       return;
     }
     
