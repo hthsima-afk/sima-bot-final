@@ -39,32 +39,22 @@ async function callLLM(messages) {
 
 // 🎨 توليد صورة باستخدام Nano Banana
 async function generateImageNanoBanana(prompt) {
-  if (!genAI) throw new Error('No Gemini API');
-  
-  // Nano Banana = gemini-2.5-flash-preview-image
-  const model = genAI.getGenerativeModel({ 
-    model: 'gemini-2.5-flash-preview-image' 
+  // استخدام Craiyon API - مجاني بدون مفتاح
+  const response = await fetch('https://api.craiyon.com/v3', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt, model: 'photo' }),
   });
   
-  const result = await model.generateContent({
-    contents: [{ 
-      role: 'user', 
-      parts: [{ text: prompt }] 
-    }],
-  });
+  if (!response.ok) throw new Error('Craiyon failed');
   
-  const response = result.response;
-  
-  // استخراج الصورة
-  if (response.candidates && response.candidates[0]?.content?.parts) {
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData && part.inlineData.data) {
-        return Buffer.from(part.inlineData.data, 'base64');
-      }
-    }
+  const data = await response.json();
+  if (data.images && data.images.length > 0) {
+    const imageBase64 = data.images[0].replace('data:image/jpeg;base64,', '');
+    return Buffer.from(imageBase64, 'base64');
   }
   
-  throw new Error('No image in response');
+  throw new Error('No image');
 }
 
 // 🎵 نسخ الصوت
