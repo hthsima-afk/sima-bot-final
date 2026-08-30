@@ -110,15 +110,38 @@ bot.command('img', async (ctx) => {
   await ctx.reply('🎨 جاري صنع الصورة...');
   
   try {
-    const imageBuffer = await generateImageNanoBanana(prompt);
+    // تحسين البرومبت بالعربية أولاً
+    const translatedPrompt = await translateToEnglish(prompt);
+    console.log('Translated:', translatedPrompt);
+    
+    const imageBuffer = await generateImageNanoBanana(translatedPrompt);
     await ctx.replyWithPhoto(imageBuffer, { caption: prompt });
   } catch(e) {
     console.error('Image error:', e.message);
-    // fallback إلى Pollinations
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true`;
-    await ctx.replyWithPhoto(url, { caption: prompt });
+    // إذا فشل Nano Banana بسبب الحصة، جرب Pollinations
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=768&nologo=true`;
+    try {
+      const response = await fetch(url);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await ctx.replyWithPhoto(buffer, { caption: prompt });
+    } catch(e2) {
+      await ctx.reply('❌ خدمة الصور غير متاحة. حاول لاحقاً.');
+    }
   }
 });
+
+// دالة الترجمة
+async function translateToEnglish(text) {
+  try {
+    const response = await callLLM([
+      { role: 'system', content: 'Translate to English. Return ONLY the translation.' },
+      { role: 'user', content: text },
+    ]);
+    return response.trim();
+  } catch(e) {
+    return text;
+  }
+}
 
 bot.command('remember', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
