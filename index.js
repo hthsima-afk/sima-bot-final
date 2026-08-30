@@ -39,22 +39,17 @@ async function callLLM(messages) {
 
 // 🎨 توليد صورة باستخدام Nano Banana
 async function generateImageNanoBanana(prompt) {
-  // استخدام Craiyon API - مجاني بدون مفتاح
-  const response = await fetch('https://api.craiyon.com/v3', {
+  // Hugging Face FLUX - مجاني
+  const response = await fetch('https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: prompt, model: 'photo' }),
+    body: JSON.stringify({ inputs: prompt }),
   });
   
-  if (!response.ok) throw new Error('Craiyon failed');
+  if (!response.ok) throw new Error('HF: ' + response.status);
   
-  const data = await response.json();
-  if (data.images && data.images.length > 0) {
-    const imageBase64 = data.images[0].replace('data:image/jpeg;base64,', '');
-    return Buffer.from(imageBase64, 'base64');
-  }
-  
-  throw new Error('No image');
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return buffer;
 }
 
 // 🎵 نسخ الصوت
