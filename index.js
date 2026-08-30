@@ -38,14 +38,37 @@ async function callLLM(messages) {
   }
 }
 
-// 🎨 صنع الصور
 async function generateImage(prompt) {
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true`;
 }
 
-// 🎥 صنع الفيديو
 async function generateVideo(prompt) {
   return `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?duration=3&nologo=true`;
+}
+
+// 🎵 نسخ الصوت
+async function transcribeAudio(fileUrl) {
+  try {
+    const response = await fetch(fileUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // استخدام Groq Whisper
+    const transcription = await groq.audio.transcriptions.create({
+      file: {
+        name: 'audio.ogg',
+        data: buffer,
+      },
+      model: 'whisper-large-v3-turbo',
+      language: 'ar',
+      response_format: 'json',
+    });
+    
+    return transcription.text;
+  } catch (error) {
+    console.error('Transcription error:', error);
+    throw error;
+  }
 }
 
 bot.command('start', async (ctx) => {
@@ -57,7 +80,8 @@ bot.command('start', async (ctx) => {
     '🎥 /vid وصف - صنع فيديو\n' +
     '💾 /remember مفتاح قيمة\n' +
     '🔍 /recall مفتاح\n' +
-    '📚 /listmem\n\n' +
+    '📚 /listmem\n' +
+    '🎵 أرسل مقطع صوتي لفهمه!\n\n' +
     'Just chat!'
   );
 });
@@ -68,11 +92,11 @@ bot.command('help', async (ctx) => {
     '🎥 /vid وصف\n' +
     '💾 /remember مفتاح قيمة\n' +
     '🔍 /recall مفتاح\n' +
-    '📚 /listmem'
+    '📚 /listmem\n' +
+    '🎵 أرسل صوت للنسخ!'
   );
 });
 
-// 🎨 صنع صورة
 bot.command('img', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
@@ -84,18 +108,13 @@ bot.command('img', async (ctx) => {
   
   try {
     const imageUrl = await generateImage(prompt);
-    console.log('Image URL:', imageUrl);
-    
-    // إرسال مباشر من الرابط
     await ctx.replyWithPhoto(imageUrl, { caption: `🎨 ${prompt}` });
   } catch(e) {
-    console.error('Image error:', e.message);
     const url = await generateImage(prompt);
-    await ctx.reply(`🎨 الصورة جاهزة:\n${url}`);
+    await ctx.reply(`🎨 الصورة:\n${url}`);
   }
 });
 
-// 🎥 صنع فيديو
 bot.command('vid', async (ctx) => {
   const uid = ctx.from?.id.toString() || '';
   if (!allowedUsers.includes(uid)) return;
@@ -107,7 +126,7 @@ bot.command('vid', async (ctx) => {
   
   try {
     const videoUrl = await generateVideo(prompt);
-    await ctx.reply(`🎥 الفيديو جاهز:\n${videoUrl}`);
+    await ctx.reply(`🎥 الفيديو:\n${videoUrl}`);
   } catch(e) {
     await ctx.reply('❌ خطأ في صنع الفيديو');
   }
@@ -142,6 +161,52 @@ bot.command('listmem', async (ctx) => {
   let resp = '📚 الذكريات:\n\n';
   for (const k of keys) resp += `• ${k}: ${mem[k]}\n`;
   await ctx.reply(resp);
+});
+
+// 🎵 فهم الصوت
+bot.on('message:voice', async (ctx) => {
+  const uid = ctx.from?.id.toString() || '';
+  if (!allowedUsers.includes(uid)) return ctx.reply('⛔ غير مصرح');
+  
+  try {
+    await ctx.reply('🎵 جاري فهم الصوت...');
+    
+    // الحصول على ملف الصوت
+    const file = await ctx.getFile();
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+    
+    console.log('Audio URL:', fileUrl);
+    
+    // نسخ الصوت
+    const text = await transcribeAudio(fileUrl);
+    
+    await ctx.reply(`🎵 النص:\n\n${text}`);
+    
+  } catch(error) {
+    console.error('Voice error:', error);
+    await ctx.reply('❌ خطأ في فهم الصوت. حاول مرة أخرى.');
+  }
+});
+
+// 🎵 فهم ملفات الصوت المرسلة
+bot.on('message:audio', async (ctx) => {
+  const uid = ctx.from?.id.toString() || '';
+  if (!allowedUsers.includes(uid)) return;
+  
+  try {
+    await ctx.reply('🎵 جاري فهم الملف الصوتي...');
+    
+    const file = await ctx.getFile();
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+    
+    const text = await transcribeAudio(fileUrl);
+    
+    await ctx.reply(`🎵 النص:\n\n${text}`);
+    
+  } catch(error) {
+    console.error('Audio error:', error);
+    await ctx.reply('❌ خطأ في فهم الملف الصوتي');
+  }
 });
 
 bot.on('message:text', async (ctx) => {
